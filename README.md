@@ -29,3 +29,4 @@
 ![image](https://github.com/HayateStar/ntu_fin_thesis/blob/master/graph/1011_test_%E5%8D%8A%E5%B0%8E%E9%AB%94_1.png)
 
   *  x軸 : DD Measure , y軸 : Modified Jones Model
+![image](https://github.com/HayateStar/ntu_fin_thesis/blob/master/graph/1011_test_%E5%8D%8A%E5%B0%8E%E9%AB%94_2.png)
