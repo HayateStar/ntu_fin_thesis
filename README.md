@@ -23,7 +23,7 @@
 
 * 計算檔案：EM & AQ計算.R
 
-* 計算結果 (以2016年上市半導體業為例)
+* 計算結果：(以2016年上市半導體業為例)
   
   *  x軸 : DD Measure , y軸 : Performance Matching
 ![image](https://github.com/HayateStar/ntu_fin_thesis/blob/master/graph/1011_test_%E5%8D%8A%E5%B0%8E%E9%AB%94_1.png)
