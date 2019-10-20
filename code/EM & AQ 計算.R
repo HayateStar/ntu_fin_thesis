@@ -6,6 +6,7 @@ library(dplyr)
 library(tidyr)
 library(broom)
 library(tidyverse)
+library(TTR)
 
 ifrs_data <- read.csv("IFRS上市上櫃財報資料.csv")
 #index_factor <- read.csv("上市上櫃指數因子.csv")
@@ -16,14 +17,14 @@ ifrs_data <- read.csv("IFRS上市上櫃財報資料.csv")
 
 #Remove the space
 ifrs_data <- as.data.frame(apply(ifrs_data, 2 , function(input){gsub(" ","",input)} )) 
-index_data <- as.data.frame(apply(index_factor, 2 , function(input){gsub(" ","",input)} )) 
+#index_data <- as.data.frame(apply(index_factor, 2 , function(input){gsub(" ","",input)} )) 
 
 colnames_to_string_ifrs <- c("公司","簡稱","上市別","TSE.產業別","TSE新產業_名稱","TSE新產業_代碼",
                         "TSE新產業名")
 
 
 # Convert factor to string/number
-index_data_cleaned <- index_data %>% mutate_if(is.factor, as.character)
+#index_data_cleaned <- index_data %>% mutate_if(is.factor, as.character)
 
 ifrs_data_tag <- ifrs_data %>% select(colnames_to_string_ifrs) %>% mutate_if(is.factor, as.character)
 ifrs_data_numeric <- ifrs_data %>% select(-colnames_to_string_ifrs) %>% mutate_if(is.factor, 
@@ -60,7 +61,7 @@ ifrs_data_otc$ROA.A.稅後息前 <- ifrs_data_otc$ROA.A.稅後息前/100
 
 
 add_AQ_EM_columns <- function(data){
-  data %>% group_by(公司) %>% arrange(年.月) %>% mutate(   ## AQ Variables
+  data %>% group_by(公司) %>% arrange(年.月) %>% filter(length(公司) >= 3) %>% mutate(   ## AQ Variables
                                                            delta_CA = c(NA,diff(流動資產)),
                                                            delta_CL = c(NA,diff(流動負債)),
                                                            delta_cash = c(NA,diff(現金及約當現金)),
@@ -79,7 +80,14 @@ add_AQ_EM_columns <- function(data){
                                                            
                                                            earning_t = 稅前息前淨利,
                                                            earning_t_minus_1 = c(NA,稅前息前淨利[-length(公司)]),
-                                                          
+                                                           earning_t_minus_2 = c(rep(NA,2),稅前息前淨利[-c(length(公司),length(公司)-1)]),
+                                                           earning_t_minus_3 = c(rep(NA,3),稅前息前淨利[-c(length(公司),length(公司)-1,length(公司)-2)]),
+                                                           
+                                                           
+                                                           operating_earning_t = 營業利益,
+                                                           operating_earning_t_minus_1 = c(NA,營業利益[-length(公司)]),
+                                                           operating_earning_t_minus_2 = c(rep(NA,2),營業利益[-c(length(公司),length(公司)-1)]),
+                                                           operating_earning_t_minus_3 = c(rep(NA,3),營業利益[-c(length(公司),length(公司)-1,length(公司)-2)]),
                                                     
                                                            ## EM Vairables
                                                            EM_total_accruals = 合併總損益-來自營運之現金流量,
@@ -166,18 +174,18 @@ SD_accruals_otc<- as.data.frame(SD_accruals(ifrs_data_otc_add_AQ_EM_columns))
 
   #### Persistence ####
 
-
 Persistence_resid <- function(data){
   
   data %>% 
-    drop_na(earning_t, earning_t_minus_1, TA_t_minus_1) %>% 
-    
+    drop_na(earning_t,earning_t_minus_1,TA_t_minus_1) %>% 
     group_by(TSE新產業_代碼, 年.月) %>%
     
     mutate(y = earning_t/TA_t_minus_1,
            x1 = earning_t_minus_1/TA_t_minus_1,
            Persistence_resid = residuals(lm(y ~ x1 , data = .))
     ) %>% select(公司,簡稱,年.月,TSE新產業_名稱,TSE新產業_代碼,Persistence_resid)
+  
+  
   #%>% nest() %>%  
   #mutate(model = map(data , ~lm(y ~ x1 + x2 + x3, data = .)),
   #       model_data = map2(model, data ,broom::augment)) %>% unnest(model_data)
@@ -188,6 +196,7 @@ Persistence_resid <- function(data){
 
 Persistence_resid_tse <- as.data.frame(Persistence_resid(ifrs_data_tse_add_AQ_EM_columns))
 Persistence_resid_otc <- as.data.frame(Persistence_resid(ifrs_data_otc_add_AQ_EM_columns))
+
 
 
   #### Differential Persistence  ####
@@ -216,17 +225,86 @@ Diff_persistence_resid <- function(data){
 Diff_persistence_resid_tse <- as.data.frame(Diff_persistence_resid(ifrs_data_tse_add_AQ_EM_columns))
 Diff_persistence_resid_otc <- as.data.frame(Diff_persistence_resid(ifrs_data_otc_add_AQ_EM_columns))
 
+
+  #### Earning Slopes  &  YoY  ####
+
+earning_ratio <- function(data){
+  
+  data %>%
+    
+    group_by(公司) %>%
+    arrange(年.月) %>%
+
+    mutate(
+            ## Earning Slope 
+           ebit_slope_t = (earning_t-earning_t_minus_1)/earning_t_minus_1,
+           ebit_slope_t_minus_1 = (earning_t_minus_1-earning_t_minus_2)/earning_t_minus_2,
+           ebit_slope_t_minus_2 = (earning_t_minus_2-earning_t_minus_3)/earning_t_minus_3,
+           
+           operating_slope_t = (operating_earning_t-operating_earning_t_minus_1)/operating_earning_t_minus_1,
+           operating_slope_t_minus_1 = (operating_earning_t_minus_1-operating_earning_t_minus_2)/operating_earning_t_minus_2,
+           operating_slope_t_minus_2 = (operating_earning_t_minus_2-operating_earning_t_minus_3)/operating_earning_t_minus_3,
+           
+           #sd_ebit_beta = apply(cbind(ebit_beta,ebit_beta_t_minus_1,ebit_beta_t_minus_2),1,sd),
+           #sd_operating_beta = apply(cbind(operating_beta,operating_beta_t_minus_1,operating_beta_t_minus_2),1,sd)
+           
+            
+            ## Earning YoY
+           
+            yoy_ebit_t = ifelse(earning_t_minus_1 > 0, earning_t/earning_t_minus_1, 1-(earning_t/earning_t_minus_1)),
+            yoy_ebit_t_minus_1 = ifelse(earning_t_minus_2 > 0, earning_t_minus_1/earning_t_minus_2, 1-(earning_t_minus_1/earning_t_minus_2)),
+            yoy_ebit_t_minus_2 = ifelse(earning_t_minus_3 > 0, earning_t_minus_2/earning_t_minus_3, 1-(earning_t_minus_2/earning_t_minus_3)),
+           
+            yoy_operating_t = ifelse(operating_earning_t_minus_1 > 0, operating_earning_t/operating_earning_t_minus_1, 1-(operating_earning_t/operating_earning_t_minus_1)),
+            yoy_operating_t_minus_1 = ifelse(operating_earning_t_minus_2 > 0, operating_earning_t_minus_1/operating_earning_t_minus_2, 1-(operating_earning_t_minus_1/operating_earning_t_minus_2)),
+            yoy_operating_t_minus_2 = ifelse(operating_earning_t_minus_3 > 0, operating_earning_t_minus_2/operating_earning_t_minus_3, 1-(operating_earning_t_minus_2/operating_earning_t_minus_3))
+           
+           
+           
+           
+           
+    ) %>%
+    
+    select(公司,簡稱,年.月,TSE新產業_名稱,TSE新產業_代碼,ebit_slope_t, ebit_slope_t_minus_1,ebit_slope_t_minus_2,
+             operating_slope_t,operating_slope_t_minus_1,operating_slope_t_minus_2,
+             yoy_ebit_t,yoy_ebit_t_minus_1,yoy_ebit_t_minus_2,
+             yoy_operating_t,yoy_operating_t_minus_1,yoy_operating_t_minus_2)
+  
+    #select(公司,簡稱,年.月,TSE新產業_名稱,TSE新產業_代碼,ebit_beta, operating_beta,sd_ebit_beta,sd_operating_beta)
+  
+}
+
+
+
+earning_ratio_tse <- as.data.frame(earning_ratio(ifrs_data_tse_add_AQ_EM_columns))
+earning_ratio_otc <- as.data.frame(earning_ratio(ifrs_data_otc_add_AQ_EM_columns))
+
+
+
+
+
+
+
   #### Join all AQ measures ####
 
 
 AQ_tse_1 <- left_join(SD_accruals_tse,DD_measure_tse[,c("DD_measure","公司","年.月")], by = c("公司","年.月"))
 AQ_tse_2 <- left_join(AQ_tse_1,Persistence_resid_tse[,c("Persistence_resid","公司","年.月")], by = c("公司","年.月"))
-AQ_tse_final <- left_join(AQ_tse_2,Diff_persistence_resid_tse[,c("Diff_persistence_resid","公司","年.月")], by = c("公司","年.月"))
+AQ_tse_3 <- left_join(AQ_tse_2,Diff_persistence_resid_tse[,c("Diff_persistence_resid","公司","年.月")], by = c("公司","年.月"))
+AQ_tse_final <- left_join(AQ_tse_3,earning_ratio_tse[,c("ebit_slope_t", "ebit_slope_t_minus_1","ebit_slope_t_minus_2",
+                                                        "operating_slope_t","operating_slope_t_minus_1","operating_slope_t_minus_2",
+                                                        "yoy_ebit_t","yoy_ebit_t_minus_1","yoy_ebit_t_minus_2",
+                                                        "yoy_operating_t","yoy_operating_t_minus_1","yoy_operating_t_minus_2","公司","年.月")], by = c("公司","年.月"))
+
 
 
 AQ_otc_1 <- left_join(SD_accruals_otc,DD_measure_otc[,c("DD_measure","公司","年.月")], by = c("公司","年.月"))
 AQ_otc_2 <- left_join(AQ_otc_1,Persistence_resid_otc[,c("Persistence_resid","公司","年.月")], by = c("公司","年.月"))
-AQ_otc_final <- left_join(AQ_otc_2,Diff_persistence_resid_otc[,c("Diff_persistence_resid","公司","年.月")], by = c("公司","年.月"))
+AQ_otc_3 <- left_join(AQ_otc_2,Diff_persistence_resid_otc[,c("Diff_persistence_resid","公司","年.月")], by = c("公司","年.月"))
+AQ_otc_final <- left_join(AQ_otc_3,earning_ratio_otc[,c("ebit_slope_t", "ebit_slope_t_minus_1","ebit_slope_t_minus_2",
+                                                        "operating_slope_t","operating_slope_t_minus_1","operating_slope_t_minus_2",
+                                                        "yoy_ebit_t","yoy_ebit_t_minus_1","yoy_ebit_t_minus_2",
+                                                        "yoy_operating_t","yoy_operating_t_minus_1","yoy_operating_t_minus_2","公司","年.月")], by = c("公司","年.月"))
 
 
 
@@ -321,20 +399,4 @@ AQ_EM_otc_final <- left_join(AQ_EM_otc_1,
 
 
 
-#### Plots ####
-
-
-
-test <- AQ_EM_tse_final %>% filter(TSE新產業_代碼 == "M2324" & 年.月 == "201612")
-
-plot(test$DD_measure , test$Performance_matching_measure
-     , xlab = "DD Measure", ylab = "Performance Matching", pch = "")
-
-text(x= test$DD_measure , y = test$Performance_matching_measure , labels=test$簡稱)
-
-
-
-plot(test$DD_measure , test$Modified_Jones_model_measure
-     , xlab = "DD Measure", ylab = "Modified Jones model", pch = "")
-
-text(x= test$DD_measure , y = test$Modified_Jones_model_measure , labels=test$簡稱)
+#
