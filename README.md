@@ -36,3 +36,8 @@
 
   *  x軸 : Differential Persistence , y軸 : Modified Jones Model
 ![image](https://github.com/HayateStar/ntu_fin_thesis/blob/master/graph/2016%E5%8D%8A%E5%B0%8E%E9%AB%94%20(DP%20vs%20MJM).png)
+
+
+### 11/14 Update : Shiny App Link
+
+https://reurl.cc/yyRkZa
